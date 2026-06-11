@@ -5,10 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Coffee Tree — Dashboard</title>
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="manifest" href="manifest.json" />
   <script>
     // Set theme immediately to avoid flash
     const savedTheme = localStorage.getItem('pos-theme') || 'light';
     document.documentElement.className = savedTheme === 'dark' ? 'theme-dark-pos' : 'theme-light-pos';
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(() => console.log('Service Worker Registered'))
+        .catch((err) => console.warn('Service Worker registration failed:', err));
+    }
   </script>
 </head>
 <body class="theme-light-pos">
@@ -71,7 +78,12 @@
         <div class="topbar-title" id="topbar-title">Select a table to begin</div>
         <div class="topbar-sub" id="topbar-sub">Choose from the sidebar</div>
       </div>
-      <span id="topbar-badge"></span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="topbar-badge"></span>
+        <button class="btn-sm primary" id="pwa-install-btn" style="display:none;align-items:center;gap:6px;padding:6px 12px;font-size:12px;font-weight:700" title="Install on Desktop">
+          📥 Install App
+        </button>
+      </div>
       <input class="menu-search topbar-search" type="search" id="menu-search" placeholder="Search menu…" style="display:none" />
     </div>
 
@@ -1225,6 +1237,37 @@ async function addCategory() {
 
 // ─── HELPERS ───
 function pad(n) { return String(n).padStart(2, '0'); }
+
+// ─── PWA INSTALLATION LOGIC ───
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.style.display = 'flex';
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.onclick = async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response to install: ${outcome}`);
+      deferredPrompt = null;
+      installBtn.style.display = 'none';
+    };
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('Coffee Tree POS was installed.');
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) installBtn.style.display = 'none';
+});
 </script>
 </body>
 </html>

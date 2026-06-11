@@ -1,0 +1,17 @@
+{
+  "short_name": "Coffee Tree",
+  "name": "Coffee Tree POS Billing",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "index.html",
+  "background_color": "#F9F5F0",
+  "theme_color": "#8B5E3C",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}
