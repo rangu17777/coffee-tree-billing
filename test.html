@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Coffee Tree — Test Cases & Verification Suite</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    body {
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+      background: #F9F5F0;
+      color: #2C1A0E;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .test-card {
+      background: #ffffff;
+      border: 1px solid #E8DDD1;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(92,51,23,0.06);
+    }
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .test-title {
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .status-pass {
+      background: #E1F5EE;
+      color: #0F6E56;
+    }
+    .status-fail {
+      background: #FDE8E8;
+      color: #9C1A1A;
+    }
+    .test-log {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: #FDFBF7;
+      border: 1px solid #F0E6D8;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div style="margin-bottom: 30px;">
+    <h1>☕ Verification & Test Cases Suite</h1>
+    <p style="color: #7A5C44;">Automated verification of logic and layout for today's summary metrics and revenue share pie chart.</p>
+  </div>
+
+  <div id="test-results"></div>
+
+  <!-- Mock target elements for tests -->
+  <div style="display:none">
+    <div id="daily-summary"></div>
+    <canvas id="revenue-chart-canvas"></canvas>
+  </div>
+
+  <!-- Import Chart.js (or mock) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script>
+    // Mock Global State
+    let allBills = [];
+    let settings = { cgstRate: 2.5, sgstRate: 2.5 };
+    let revenueChart = null;
+
+    // Helper functions under test (copy of history.html implementation)
+    function runCalculateDailySummary() {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayBills = allBills.filter(b => !b.voided && b.date && b.date.startsWith(todayStr));
+      const billCount = todayBills.length;
+      const revenue = todayBills.reduce((s, b) => s + (b.grand || 0), 0);
+      const tax = todayBills.reduce((s, b) => s + (b.cgst || 0) + (b.sgst || 0), 0);
+
+      const itemMap = {};
+      todayBills.forEach(b => (b.items || []).forEach(i => {
+        itemMap[i.name] = (itemMap[i.name] || 0) + i.qty;
+      }));
+      const top3 = Object.entries(itemMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      return { billCount, revenue, tax, top3 };
+    }
+
+    function runCalculatePieChartData() {
+      const itemRevenueMap = {};
+      const activeBills = allBills.filter(b => !b.voided);
+      activeBills.forEach(b => {
+        (b.items || []).forEach(i => {
+          const itemRevenue = (i.price || 0) * (i.qty || 0);
+          itemRevenueMap[i.name] = (itemRevenueMap[i.name] || 0) + itemRevenue;
+        });
+      });
+
+      const sortedItems = Object.entries(itemRevenueMap).sort((a, b) => b[1] - a[1]);
+      if (sortedItems.length === 0) return { labels: [], data: [] };
+
+      let labels = [];
+      let data = [];
+
+      if (sortedItems.length <= 5) {
+        labels = sortedItems.map(item => item[0]);
+        data = sortedItems.map(item => +item[1].toFixed(2));
+      } else {
+        const top4 = sortedItems.slice(0, 4);
+        labels = top4.map(item => item[0]);
+        data = top4.map(item => +item[1].toFixed(2));
+
+        const othersRevenue = sortedItems.slice(4).reduce((sum, item) => sum + item[1], 0);
+        labels.push('Others');
+        data.push(+othersRevenue.toFixed(2));
+      }
+      return { labels, data };
+    }
+
+    // Test Runner
+    const resultsContainer = document.getElementById('test-results');
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+
+    function runTest(name, description, testFn) {
+      const card = document.createElement('div');
+      card.className = 'test-card';
+      
+      const header = document.createElement('div');
+      header.className = 'test-header';
+      
+      const title = document.createElement('div');
+      title.className = 'test-title';
+      title.innerHTML = `<strong>${name}</strong><br><span style="font-size:12px;font-weight:normal;color:#7A5C44;">${description}</span>`;
+      
+      const badge = document.createElement('span');
+      badge.className = 'status-badge';
+      
+      const log = document.createElement('div');
+      log.className = 'test-log';
+      
+      header.appendChild(title);
+      header.appendChild(badge);
+      card.appendChild(header);
+      card.appendChild(log);
+      resultsContainer.appendChild(card);
+
+      try {
+        testFn(log);
+        badge.textContent = 'Pass';
+        badge.classList.add('status-pass');
+      } catch (err) {
+        badge.textContent = 'Fail';
+        badge.classList.add('status-fail');
+        log.textContent += `\n❌ Assertion Error: ${err.message}\n${err.stack}`;
+      }
+    }
+
+    // Define Tests
+    runTest(
+      'Test Case 1: Today\'s Summary metrics computation',
+      'Verifies that renderDailySummary computes correct count, revenue, tax, and top items based on mock bills for today.',
+      (log) => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        allBills = [
+          {
+            billNo: '1', date: todayStr + 'T10:00:00.000Z', voided: false, grand: 500, cgst: 12.5, sgst: 12.5,
+            items: [{ name: 'Cappuccino', qty: 2, price: 80 }, { name: 'Cheese Cake', qty: 1, price: 120 }]
+          },
+          {
+            billNo: '2', date: todayStr + 'T11:00:00.000Z', voided: false, grand: 300, cgst: 7.5, sgst: 7.5,
+            items: [{ name: 'Cappuccino', qty: 1, price: 80 }, { name: 'American Coffee', qty: 1, price: 70 }]
+          },
+          {
+            // Voided bill - should be ignored
+            billNo: '3', date: todayStr + 'T12:00:00.000Z', voided: true, grand: 1000, cgst: 25, sgst: 25,
+            items: [{ name: 'Cheese Cake', qty: 5, price: 120 }]
+          }
+        ];
+
+        const summary = runCalculateDailySummary();
+        log.textContent = `Input: 2 Active bills and 1 Voided bill today.\n`;
+        log.textContent += `Result:\n- Bill Count: ${summary.billCount} (Expected: 2)\n- Total Revenue: ₹${summary.revenue} (Expected: ₹800)\n- Tax: ₹${summary.tax} (Expected: ₹40.00)\n- Top Item: ${summary.top3[0][0]} x${summary.top3[0][1]} (Expected: Cappuccino x3)\n`;
+
+        assert(summary.billCount === 2, 'Bill count should be 2');
+        assert(summary.revenue === 800, 'Revenue should be 800');
+        assert(summary.tax === 40, 'Tax should be 40');
+        assert(summary.top3[0][0] === 'Cappuccino' && summary.top3[0][1] === 3, 'Top item should be Cappuccino x3');
+      }
+    );
+
+    runTest(
+      'Test Case 2: Today\'s Summary with empty data',
+      'Verifies that summary functions handle cases when no bills are present for today.',
+      (log) => {
+        allBills = [];
+        const summary = runCalculateDailySummary();
+        log.textContent = `Input: 0 bills today.\n`;
+        log.textContent += `Result:\n- Bill Count: ${summary.billCount} (Expected: 0)\n- Revenue: ₹${summary.revenue} (Expected: ₹0)\n- Tax: ₹${summary.tax} (Expected: ₹0)\n`;
+
+        assert(summary.billCount === 0, 'Bill count should be 0');
+        assert(summary.revenue === 0, 'Revenue should be 0');
+        assert(summary.tax === 0, 'Tax should be 0');
+      }
+    );
+
+    runTest(
+      'Test Case 3: Pie Chart Grouping (Under 5 items)',
+      'Verifies that when there are 5 or fewer items, each item is shown individually with no "Others" group.',
+      (log) => {
+        allBills = [
+          {
+            voided: false,
+            items: [
+              { name: 'Cappuccino', qty: 2, price: 80 }, // 160
+              { name: 'Cheese Cake', qty: 1, price: 120 }, // 120
+              { name: 'American Coffee', qty: 1, price: 70 } // 70
+            ]
+          }
+        ];
+
+        const chartData = runCalculatePieChartData();
+        log.textContent = `Input: 3 unique items.\n`;
+        log.textContent += `Result Labels: ${JSON.stringify(chartData.labels)} (Expected: ['Cappuccino', 'Cheese Cake', 'American Coffee'])\n`;
+        log.textContent += `Result Data: ${JSON.stringify(chartData.data)} (Expected: [160, 120, 70])\n`;
+
+        assert(chartData.labels.length === 3, 'Should have exactly 3 labels');
+        assert(chartData.labels.includes('Cappuccino') && chartData.data[chartData.labels.indexOf('Cappuccino')] === 160, 'Cappuccino should have 160');
+        assert(!chartData.labels.includes('Others'), 'Should not contain "Others" group');
+      }
+    );
+
+    runTest(
+      'Test Case 4: Pie Chart Grouping (Over 5 items - grouping others)',
+      'Verifies that when there are more than 5 unique items, the top 4 are displayed, and the rest are aggregated into "Others".',
+      (log) => {
+        allBills = [
+          {
+            voided: false,
+            items: [
+              { name: 'Item A', qty: 10, price: 10 }, // 100
+              { name: 'Item B', qty: 9, price: 10 },  // 90
+              { name: 'Item C', qty: 8, price: 10 },  // 80
+              { name: 'Item D', qty: 7, price: 10 },  // 70
+              { name: 'Item E', qty: 6, price: 10 },  // 60 (Others)
+              { name: 'Item F', qty: 5, price: 10 }   // 50 (Others)
+            ]
+          }
+        ];
+
+        const chartData = runCalculatePieChartData();
+        log.textContent = `Input: 6 unique items.\n`;
+        log.textContent += `Result Labels: ${JSON.stringify(chartData.labels)} (Expected: ['Item A', 'Item B', 'Item C', 'Item D', 'Others'])\n`;
+        log.textContent += `Result Data: ${JSON.stringify(chartData.data)} (Expected: [100, 90, 80, 70, 110])\n`;
+
+        assert(chartData.labels.length === 5, 'Should have exactly 5 labels (top 4 + Others)');
+        assert(chartData.labels[4] === 'Others', 'Last label should be "Others"');
+        assert(chartData.data[4] === 110, 'Others revenue should be 60 + 50 = 110');
+      }
+    );
+  </script>
+</body>
+</html>

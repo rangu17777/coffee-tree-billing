@@ -1,0 +1,6 @@
+# Logs and system files
+*.log
+.system_generated/
+.DS_Store
+Thumbs.db
+.claude/

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coffee Tree — Bill History</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    // Set theme immediately to avoid flash
+    const savedTheme = localStorage.getItem('pos-theme') || 'light';
+    document.documentElement.className = savedTheme === 'dark' ? 'theme-dark-pos' : 'theme-light-pos';
+  </script>
+</head>
+<body class="theme-light-pos">
+<script>
+  // Sync body theme before layout paint
+  if (localStorage.getItem('pos-theme') === 'dark') {
+    document.body.classList.remove('theme-light-pos');
+    document.body.classList.add('theme-dark-pos');
+  }
+</script>
+<div id="print-area" style="display:none"></div>
+
+<div class="history-shell">
+  <div class="history-topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="icon-btn" onclick="window.location.href='dashboard.html'" title="Back to Dashboard">←</button>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">☕ Bill History</div>
+        <div style="font-size:11px;color:var(--text-sub)" id="history-count">Loading…</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:13px;font-weight:600;color:var(--brown-accent)" id="total-summary"></span>
+      <button class="icon-btn" id="export-btn" title="Export CSV">📥</button>
+      <button class="icon-btn" id="logout-btn" title="Logout">🚪</button>
+    </div>
+  </div>
+
+  <div class="history-main">
+    <div class="history-filters">
+      <label style="font-size:12px;color:var(--text-sub)">From</label>
+      <input type="date" id="filter-from" />
+      <label style="font-size:12px;color:var(--text-sub)">To</label>
+      <input type="date" id="filter-to" />
+      <button class="btn-sm primary" id="filter-btn">Apply</button>
+      <button class="btn-sm secondary" id="clear-filter-btn">Clear</button>
+    </div>
+
+    <!-- Daily Summary (Feature 1) -->
+    <div id="daily-summary" class="daily-summary-panel"></div>
+
+    <!-- Revenue Share Chart -->
+    <div class="chart-panel" id="chart-panel">
+      <div class="chart-panel-header">
+        <span class="chart-title">Revenue Share by Item</span>
+      </div>
+      <div style="position:relative;height:220px">
+        <canvas id="revenue-chart-canvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Top Items Report (Feature 10) -->
+    <div class="chart-panel" style="margin-bottom:16px">
+      <div class="chart-panel-header" style="cursor:pointer" onclick="toggleTopItems()">
+        <span class="chart-title">Top Items Report</span>
+        <span id="top-items-chevron" style="font-size:12px;color:var(--text-sub)">▶</span>
+      </div>
+      <div id="top-items-body" class="hidden"></div>
+    </div>
+
+    <div id="history-content">
+      <div class="loading">Loading bills…</div>
+    </div>
+  </div>
+</div>
+
+<!-- VOID MODAL (Feature 7) -->
+<div class="overlay hidden" id="void-overlay">
+  <div class="modal" style="width:360px">
+    <div class="modal-header">
+      <h2>🚫 Void Bill</h2>
+      <button class="modal-close" onclick="document.getElementById('void-overlay').classList.add('hidden')">×</button>
+    </div>
+    <div style="padding:16px">
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:12px">This will mark the bill as voided and exclude it from all revenue totals. Enter a reason:</p>
+      <textarea id="void-reason-input" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;resize:vertical" placeholder="Reason (e.g. Wrong order, Customer left)…"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)">
+      <button class="bill-act-btn primary" style="background:var(--red);border-color:var(--red)" onclick="confirmVoid()">Confirm Void</button>
+      <button class="bill-act-btn" onclick="document.getElementById('void-overlay').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCxY-AfWDTB7T2SL4c3GDaz56AWpf--sp0",
+  authDomain: "bill-b9548.firebaseapp.com",
+  projectId: "bill-b9548",
+  storageBucket: "bill-b9548.firebasestorage.app",
+  messagingSenderId: "52759095228",
+  appId: "1:52759095228:web:4d01cd1f741e16e66c6db9"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let allBills = [];
+let pendingVoidIdx = null;
+let revenueChart = null;
+let settings = {
+  cafeName: 'Coffee Tree',
+  address: 'H-58, Old Khandala Rd, near Asha Seva Kendra\nSt. Stanislaus Villa, Khandala, Lonavala 410401',
+  phone: '090217 36244'
+};
+
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { window.location.href = 'index.html'; return; }
+
+  // Load settings from cache to render headers instantly
+  const cachedSettings = localStorage.getItem('pos-settings');
+  if (cachedSettings) {
+    try {
+      Object.assign(settings, JSON.parse(cachedSettings));
+    } catch (e) {
+      console.warn('Failed to parse cached settings in history:', e);
+    }
+  }
+
+  // Fetch settings from Firestore in the background
+  try {
+    const snap = await db.collection('settings').doc('config').get();
+    if (snap.exists) {
+      Object.assign(settings, snap.data());
+      localStorage.setItem('pos-settings', JSON.stringify(settings));
+    }
+  } catch (err) {
+    console.warn('Failed to fetch settings from DB in history:', err.message);
+  }
+
+  document.getElementById('logout-btn').onclick = () => auth.signOut().then(() => window.location.href = 'index.html');
+  document.getElementById('filter-btn').onclick = applyFilter;
+  document.getElementById('clear-filter-btn').onclick = clearFilter;
+  document.getElementById('export-btn').onclick = exportCSV;
+  document.getElementById('void-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('void-overlay').classList.add('hidden'); };
+
+  await loadBills();
+});
+
+async function loadBills(fromDate, toDate) {
+  document.getElementById('history-content').innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    let ref = db.collection('bills').orderBy('createdAt', 'desc').limit(300);
+    if (fromDate && toDate) {
+      ref = db.collection('bills')
+        .where('createdAt', '>=', firebase.firestore.Timestamp.fromDate(fromDate))
+        .where('createdAt', '<=', firebase.firestore.Timestamp.fromDate(toDate))
+        .orderBy('createdAt', 'desc').limit(300);
+    }
+    const snap = await ref.get();
+    allBills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderBills();
+  } catch (err) {
+    document.getElementById('history-content').innerHTML =
+      `<div class="no-history" style="color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderBills() {
+  const activeBills = allBills.filter(b => !b.voided);
+  const count = allBills.length;
+  document.getElementById('history-count').textContent = `${count} bill${count !== 1 ? 's' : ''}`;
+  const totalRev = activeBills.reduce((s, b) => s + (b.grand || 0), 0);
+  document.getElementById('total-summary').textContent = count ? `Total: ₹${totalRev.toLocaleString('en-IN')}` : '';
+
+  renderDailySummary();
+  renderRevenuePieChart();
+  if (!document.getElementById('top-items-body').classList.contains('hidden')) renderTopItemsReport();
+
+  if (!count) {
+    document.getElementById('history-content').innerHTML = '<div class="no-history">No bills found.</div>';
+    return;
+  }
+
+  let html = `<table class="history-table">
+    <thead><tr>
+      <th>Bill No</th><th>Table</th><th>Date &amp; Time</th><th>Items</th>
+      <th style="text-align:right">Total</th><th style="text-align:center">Action</th>
+    </tr></thead><tbody>`;
+
+  allBills.forEach((bill, idx) => {
+    const qty = (bill.items || []).reduce((s, i) => s + i.qty, 0);
+    const isVoided = !!bill.voided;
+    html += `
+      <tr class="expandable${isVoided ? ' voided-row' : ''}" onclick="toggleDetail(${idx}, event)">
+        <td style="font-family:monospace;font-size:12px">${bill.billNo || '—'}${isVoided ? ' <span class="void-badge">VOID</span>' : ''}</td>
+        <td>Table ${bill.tableId}</td>
+        <td>${bill.dateStr || '—'}, ${bill.timeStr || ''}</td>
+        <td>${qty} item${qty !== 1 ? 's' : ''}</td>
+        <td style="text-align:right;font-weight:600;color:var(--brown-accent)">₹${bill.grand}</td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn-sm secondary" onclick="printOneBill(${idx})" style="font-size:11px;padding:4px 8px" ${isVoided ? 'disabled' : ''}>🖨️</button>
+          ${!isVoided ? `<button class="btn-sm danger" onclick="openVoidModal(${idx},event)" style="font-size:11px;padding:4px 8px;margin-left:4px" title="Void Bill">🚫</button>` : ''}
+        </td>
+      </tr>
+      <tr id="detail-${idx}" style="display:none">
+        <td colspan="6" style="background:var(--bg);padding:10px 14px 14px">
+          <div style="font-size:12px;color:var(--text-sub)">
+            <table style="width:100%;margin-bottom:6px">
+              ${(bill.items || []).map(i =>
+                `<tr><td>${i.name}</td><td style="text-align:center">${i.qty}</td><td style="text-align:right">₹${i.price*i.qty}</td></tr>`
+              ).join('')}
+            </table>
+            Subtotal: ₹${bill.subtotal}
+            ${(bill.discountAmt > 0) ? `&nbsp;|&nbsp;<span style="color:var(--green)">Discount: −₹${bill.discountAmt}</span>` : ''}
+            &nbsp;|&nbsp; CGST (${bill.cgstRate||2.5}%): ₹${bill.cgst}
+            &nbsp;|&nbsp; SGST (${bill.sgstRate||2.5}%): ₹${bill.sgst}
+            &nbsp;|&nbsp; <strong style="color:var(--text)">Total: ₹${bill.grand}</strong>
+            ${isVoided ? `<div style="margin-top:6px;color:var(--red);font-weight:500">🚫 Voided — ${bill.voidReason || ''}</div>` : ''}
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('history-content').innerHTML = html;
+}
+
+// ─── DAILY SUMMARY (Feature 1) ───
+function renderDailySummary() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayBills = allBills.filter(b => !b.voided && b.date && b.date.startsWith(todayStr));
+  const billCount = todayBills.length;
+  const revenue = todayBills.reduce((s, b) => s + (b.grand || 0), 0);
+  const tax = todayBills.reduce((s, b) => s + (b.cgst || 0) + (b.sgst || 0), 0);
+
+  const itemMap = {};
+  todayBills.forEach(b => (b.items || []).forEach(i => {
+    itemMap[i.name] = (itemMap[i.name] || 0) + i.qty;
+  }));
+  const top3 = Object.entries(itemMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  document.getElementById('daily-summary').innerHTML = `
+    <div class="summary-header">Today's Summary</div>
+    <div class="summary-grid">
+      <div class="summary-stat">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <span class="summary-stat-label">Bills Today</span>
+          <span style="font-size:16px; opacity:0.8">🧾</span>
+        </div>
+        <div class="summary-stat-val">${billCount}</div>
+      </div>
+      <div class="summary-stat">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <span class="summary-stat-label">Revenue Today</span>
+          <span style="font-size:16px; opacity:0.8">💰</span>
+        </div>
+        <div class="summary-stat-val">₹${revenue.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 1})}</div>
+      </div>
+      <div class="summary-stat">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <span class="summary-stat-label">Tax Collected</span>
+          <span style="font-size:16px; opacity:0.8">🏛️</span>
+        </div>
+        <div class="summary-stat-val">₹${tax.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+      </div>
+      <div class="summary-stat summary-stat-wide">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; width:100%">
+          <span class="summary-stat-label">Top Items Today</span>
+          <span style="font-size:16px; opacity:0.8">☕</span>
+        </div>
+        <div class="top-items-list">
+          ${top3.length
+            ? top3.map(([name, qty]) => `<span class="top-item-tag">🏷️ ${name} ×${qty}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--text-sub)">No sales today</span>'}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── REVENUE SHARE PIE CHART (Feature 9) ───
+function renderRevenuePieChart() {
+  const itemRevenueMap = {};
+  const activeBills = allBills.filter(b => !b.voided);
+  
+  activeBills.forEach(b => {
+    (b.items || []).forEach(i => {
+      const itemRevenue = (i.price || 0) * (i.qty || 0);
+      itemRevenueMap[i.name] = (itemRevenueMap[i.name] || 0) + itemRevenue;
+    });
+  });
+
+  const sortedItems = Object.entries(itemRevenueMap)
+    .sort((a, b) => b[1] - a[1]);
+
+  const canvas = document.getElementById('revenue-chart-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (revenueChart) {
+    revenueChart.destroy();
+    revenueChart = null;
+  }
+
+  if (sortedItems.length === 0) {
+    return;
+  }
+
+  let labels = [];
+  let data = [];
+
+  if (sortedItems.length <= 5) {
+    labels = sortedItems.map(item => item[0]);
+    data = sortedItems.map(item => +item[1].toFixed(2));
+  } else {
+    const top4 = sortedItems.slice(0, 4);
+    labels = top4.map(item => item[0]);
+    data = top4.map(item => +item[1].toFixed(2));
+
+    const othersRevenue = sortedItems.slice(4).reduce((sum, item) => sum + item[1], 0);
+    labels.push('Others');
+    data.push(+othersRevenue.toFixed(2));
+  }
+
+  const isDark = document.documentElement.classList.contains('theme-dark-pos') || 
+                 document.body.classList.contains('theme-dark-pos');
+  const textColor = isDark ? '#f5f2eb' : '#2C1A0E';
+  
+  const colors = isDark ? [
+    '#D4A373', // Caramel
+    '#A67B5B', // Latte
+    '#ECB159', // Warm Gold
+    '#8FBC8F', // Matcha
+    '#C68B59', // Cinnamon
+    '#B5C0D0'  // Light Sage
+  ] : [
+    '#4E3629', // Espresso
+    '#8B5E3C', // Latte
+    '#D4A373', // Caramel
+    '#A9B29C', // Soft Matcha
+    '#C68B59', // Cinnamon
+    '#EED9C4'  // Cream
+  ];
+
+  revenueChart = new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderColor: isDark ? '#1e1a17' : '#ffffff',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: textColor,
+            font: {
+              family: 'Plus Jakarta Sans, sans-serif',
+              size: 11,
+              weight: '500'
+            },
+            padding: 12
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const val = context.raw || 0;
+              return ` ₹${val.toLocaleString('en-IN')}`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── TOP ITEMS (Feature 10) ───
+function toggleTopItems() {
+  const body = document.getElementById('top-items-body');
+  const chevron = document.getElementById('top-items-chevron');
+  const isHidden = body.classList.toggle('hidden');
+  chevron.textContent = isHidden ? '▶' : '▼';
+  if (!isHidden) renderTopItemsReport();
+}
+
+function renderTopItemsReport() {
+  const itemMap = {};
+  allBills.filter(b => !b.voided).forEach(b => {
+    (b.items || []).forEach(i => {
+      if (!itemMap[i.name]) itemMap[i.name] = { qty: 0, revenue: 0 };
+      itemMap[i.name].qty += i.qty;
+      itemMap[i.name].revenue += i.price * i.qty;
+    });
+  });
+  const sorted = Object.entries(itemMap).sort((a, b) => b[1].qty - a[1].qty);
+  if (!sorted.length) {
+    document.getElementById('top-items-body').innerHTML = '<div class="no-history" style="padding:16px">No data.</div>';
+    return;
+  }
+  const maxQty = sorted[0][1].qty;
+  let html = `<table class="history-table"><thead><tr>
+    <th>Item</th>
+    <th style="text-align:center">Qty Sold</th>
+    <th style="text-align:right">Revenue</th>
+    <th style="width:120px"></th>
+  </tr></thead><tbody>`;
+  sorted.forEach(([name, { qty, revenue }]) => {
+    const pct = Math.round((qty / maxQty) * 100);
+    html += `<tr>
+      <td>${name}</td>
+      <td style="text-align:center;font-weight:600">${qty}</td>
+      <td style="text-align:right;color:var(--brown-accent);font-weight:600">₹${revenue.toLocaleString('en-IN')}</td>
+      <td style="padding-right:14px">
+        <div class="item-bar-bg"><div class="item-bar-fill" style="width:${pct}%"></div></div>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('top-items-body').innerHTML = html;
+}
+
+// ─── VOID BILL (Feature 7) ───
+function openVoidModal(idx, event) {
+  event.stopPropagation();
+  pendingVoidIdx = idx;
+  document.getElementById('void-reason-input').value = '';
+  document.getElementById('void-overlay').classList.remove('hidden');
+}
+
+async function confirmVoid() {
+  const reason = document.getElementById('void-reason-input').value.trim();
+  if (!reason) { alert('Please enter a reason for voiding this bill.'); return; }
+  const bill = allBills[pendingVoidIdx];
+  try {
+    await db.collection('bills').doc(bill.id).update({
+      voided: true,
+      voidReason: reason,
+      voidedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    allBills[pendingVoidIdx] = { ...bill, voided: true, voidReason: reason };
+    document.getElementById('void-overlay').classList.add('hidden');
+    renderBills();
+  } catch(err) {
+    alert('Error voiding bill: ' + err.message);
+  }
+}
+
+function toggleDetail(idx, e) {
+  if (e.target.tagName === 'BUTTON') return;
+  const row = document.getElementById('detail-' + idx);
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+// ─── BILL REPRINT (Feature 6) ───
+function printOneBill(idx) {
+  const bill = allBills[idx];
+  if (bill.voided) return;
+  const area = document.getElementById('print-area');
+  area.innerHTML = buildPrintHTML(bill);
+  area.style.display = 'block';
+  window.print();
+  area.style.display = 'none';
+}
+
+function buildPrintHTML(d) {
+  return `
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="font-size:20px;font-weight:700">${settings.cafeName}</div>
+      <div style="font-size:11px;color:#666;margin-top:4px;white-space:pre-line">${settings.address}</div>
+      <div style="font-size:11px;color:#666">Ph: ${settings.phone}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:6px">
+      <span>Bill: ${d.billNo}</span><span>${d.dateStr}, ${d.timeStr}</span>
+    </div>
+    <div style="font-size:11px;color:#666;margin-bottom:8px">Table ${d.tableId}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">
+      <thead><tr style="border-bottom:1px solid #ccc">
+        <th style="text-align:left;padding:3px 0">Item</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:right">Amount</th>
+      </tr></thead>
+      <tbody>${(d.items||[]).map(i =>
+        `<tr><td style="padding:3px 0">${i.name}</td><td style="text-align:center">${i.qty}</td><td style="text-align:right">₹${i.price*i.qty}</td></tr>`
+      ).join('')}</tbody>
+    </table>
+    <div style="border-top:1px solid #ccc;padding-top:6px">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal</span><span>₹${d.subtotal}</span></div>
+      ${(d.discountAmt > 0) ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#2ECC8A"><span>Discount</span><span>−₹${d.discountAmt}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>CGST (${d.cgstRate||2.5}%)</span><span>₹${d.cgst}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>SGST (${d.sgstRate||2.5}%)</span><span>₹${d.sgst}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;margin-top:4px"><span>Total</span><span>₹${d.grand}</span></div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:#666;margin-top:14px">Thank you for visiting ${settings.cafeName}! ☕</div>`;
+}
+
+function applyFilter() {
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  if (!from || !to) return alert('Please select both From and To dates.');
+  loadBills(new Date(from + 'T00:00:00'), new Date(to + 'T23:59:59'));
+}
+
+function clearFilter() {
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  loadBills();
+}
+
+function exportCSV() {
+  if (!allBills.length) return;
+  const rows = [['Bill No','Table','Date','Time','Subtotal','Discount','CGST','SGST','Total','Status']];
+  allBills.forEach(b => rows.push([
+    b.billNo, `Table ${b.tableId}`, b.dateStr, b.timeStr,
+    b.subtotal, b.discountAmt||0, b.cgst, b.sgst, b.grand,
+    b.voided ? 'VOID' : 'Active'
+  ]));
+  const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `coffee-tree-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>

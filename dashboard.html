@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coffee Tree — Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    // Set theme immediately to avoid flash
+    const savedTheme = localStorage.getItem('pos-theme') || 'light';
+    document.documentElement.className = savedTheme === 'dark' ? 'theme-dark-pos' : 'theme-light-pos';
+  </script>
+</head>
+<body class="theme-light-pos">
+<script>
+  // Sync body theme before layout paint
+  if (localStorage.getItem('pos-theme') === 'dark') {
+    document.body.classList.remove('theme-light-pos');
+    document.body.classList.add('theme-dark-pos');
+  }
+</script>
+<div class="page-loader" id="page-loader">Loading…</div>
+<div id="print-area" style="display:none"></div>
+
+<div class="app-shell" id="app-shell" style="display:none">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-logo-mark">CT</div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-tables" id="table-list"></div>
+    <div class="sidebar-spacer"></div>
+    <span id="free-count" style="display:none">–</span>
+    <span id="occ-count" style="display:none">–</span>
+    <span id="sidebar-logo" style="display:none">Coffee Tree</span>
+    <div class="sidebar-nav">
+      <!-- Mobile-only: menu ↔ cart toggle -->
+      <div class="mob-view-tabs" id="mob-view-tabs">
+        <button class="mob-tab-btn active" id="mob-menu-tab" onclick="mobileShowMenu()">📋 Menu</button>
+        <button class="mob-tab-btn" id="mob-cart-tab" onclick="mobileShowCart()">🛒 Cart<span class="mob-cart-badge" id="mob-cart-badge"></span></button>
+      </div>
+      <button class="sidebar-nav-btn" id="transfer-btn" title="Transfer Table" style="display:none">🔄</button>
+      <button class="theme-toggle-btn sidebar-nav-btn" id="theme-toggle-btn" title="Toggle Theme">
+        <svg class="theme-toggle-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <mask id="moon-mask">
+            <rect x="0" y="0" width="24" height="24" fill="white" />
+            <circle class="mask-circle" cx="24" cy="4" r="8" fill="black" />
+          </mask>
+          <circle class="sun-core" cx="12" cy="12" r="5" fill="currentColor" mask="url(#moon-mask)" />
+          <g class="sun-rays" stroke="currentColor">
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </g>
+        </svg>
+      </button>
+      <button class="sidebar-nav-btn" title="Bill History" onclick="window.location.href='history.html'">🧾</button>
+      <button class="sidebar-nav-btn" title="Settings" id="settings-btn">⚙️</button>
+      <button class="sidebar-nav-btn" title="Logout" id="logout-btn">🚪</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-title" id="topbar-title">Select a table to begin</div>
+        <div class="topbar-sub" id="topbar-sub">Choose from the sidebar</div>
+      </div>
+      <span id="topbar-badge"></span>
+      <input class="menu-search topbar-search" type="search" id="menu-search" placeholder="Search menu…" style="display:none" />
+    </div>
+
+    <div class="content">
+      <!-- MENU PANEL -->
+      <div class="menu-panel" id="menu-panel">
+        <div class="menu-empty">Select a table first to start taking orders</div>
+      </div>
+
+      <!-- CART PANEL -->
+      <div class="cart-panel">
+        <div class="cart-header">🛒 Order</div>
+        <div class="cart-body" id="cart-body">
+          <div class="cart-empty">No items yet</div>
+        </div>
+        <div class="cart-footer" id="cart-footer" style="display:none">
+          <div class="totals-row"><span>Subtotal</span><span id="sub-val">₹0</span></div>
+          <div class="discount-row" id="discount-row">
+            <select id="discount-type" class="discount-select">
+              <option value="flat">₹ Flat</option>
+              <option value="percent">% Off</option>
+            </select>
+            <input type="number" id="discount-value" class="discount-input" placeholder="0" min="0" />
+            <button class="discount-apply-btn" onclick="applyDiscount()">Apply</button>
+            <button class="discount-clear-btn" id="discount-clear" onclick="clearDiscount()" style="display:none">×</button>
+          </div>
+          <div class="totals-row" id="discount-display-row" style="display:none">
+            <span>Discount</span><span id="discount-val" style="color:var(--green)">−₹0</span>
+          </div>
+          <div class="totals-row"><span id="cgst-label">CGST (2.5%)</span><span id="cgst-val">₹0</span></div>
+          <div class="totals-row"><span id="sgst-label">SGST (2.5%)</span><span id="sgst-val">₹0</span></div>
+          <div class="totals-row grand"><span>Total</span><span id="grand-val">₹0</span></div>
+          <button class="kot-btn" id="kot-btn">🍳 Send KOT</button>
+          <button class="split-btn" id="split-btn">✂️ Split Bill</button>
+          <button class="bill-btn" id="bill-btn">Generate Bill</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BILL MODAL -->
+<div class="overlay hidden" id="bill-overlay">
+  <div class="modal bill-modal">
+    <div class="bill-modal-header">
+      <button class="close-btn" id="bill-close">×</button>
+      <div class="bill-modal-logo" id="bm-logo">Coffee Tree</div>
+      <div class="bill-modal-addr" id="bm-addr"></div>
+    </div>
+    <div class="bill-body" id="bm-body"></div>
+    <div class="bill-actions">
+      <button class="bill-act-btn" id="print-btn">🖨️ Print</button>
+      <button class="bill-act-btn primary" id="wa-btn">💬 WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="overlay hidden" id="settings-overlay">
+  <div class="modal settings-modal">
+    <div class="modal-header">
+      <h2>⚙️ Settings</h2>
+      <button class="modal-close" id="settings-close">×</button>
+    </div>
+    <div class="settings-tabs">
+      <button class="settings-tab active" data-tab="cafe">Cafe Details</button>
+      <button class="settings-tab" data-tab="tax">Tax Rates</button>
+      <button class="settings-tab" data-tab="menu">Menu Editor</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-tab-panel active" id="tab-cafe">
+        <div class="settings-row">
+          <div class="settings-field">
+            <label>Cafe Name</label>
+            <input type="text" id="s-name" />
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-field">
+            <label>Address</label>
+            <textarea id="s-address" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-field" style="max-width:180px">
+            <label>Phone</label>
+            <input type="text" id="s-phone" />
+          </div>
+          <div class="settings-field" style="max-width:100px">
+            <label>No. of Tables</label>
+            <input type="number" id="s-tables" min="1" max="30" />
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;margin-top:4px">
+          <button class="settings-save-btn" id="save-cafe-btn">Save Changes</button>
+          <span class="settings-success" id="cafe-success">✓ Saved</span>
+        </div>
+      </div>
+      <div class="settings-tab-panel" id="tab-tax">
+        <div class="settings-row">
+          <div class="settings-field" style="max-width:140px">
+            <label>CGST Rate (%)</label>
+            <input type="number" id="s-cgst" step="0.1" min="0" max="50" />
+          </div>
+          <div class="settings-field" style="max-width:140px">
+            <label>SGST Rate (%)</label>
+            <input type="number" id="s-sgst" step="0.1" min="0" max="50" />
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-sub);margin-bottom:14px">
+          Standard restaurant GST: CGST 2.5% + SGST 2.5% = 5% total
+        </div>
+        <div style="display:flex;align-items:center">
+          <button class="settings-save-btn" id="save-tax-btn">Save Changes</button>
+          <span class="settings-success" id="tax-success">✓ Saved</span>
+        </div>
+      </div>
+      <div class="settings-tab-panel" id="tab-menu">
+        <div id="menu-editor-list"></div>
+        <div class="add-cat-row">
+          <input type="text" id="new-cat-name" placeholder="New category name…" />
+          <button class="btn-sm primary" id="add-cat-btn">+ Add Category</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODIFIER PICKER MODAL -->
+<div class="overlay hidden" id="modifier-overlay">
+  <div class="modal" style="width:360px">
+    <div class="modal-header">
+      <h2>🎛️ Customise: <span id="mod-item-name"></span></h2>
+      <button class="modal-close" onclick="document.getElementById('modifier-overlay').classList.add('hidden')">×</button>
+    </div>
+    <div id="mod-body" style="padding:14px 16px;max-height:55vh;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)">
+      <button class="bill-act-btn primary" onclick="confirmModifier()">Add to Cart</button>
+      <button class="bill-act-btn" onclick="document.getElementById('modifier-overlay').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODIFIER EDITOR MODAL (settings) -->
+<div class="overlay hidden" id="mod-editor-overlay">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <h2>🎛️ Modifiers: <span id="mod-editor-item-name"></span></h2>
+      <button class="modal-close" onclick="document.getElementById('mod-editor-overlay').classList.add('hidden')">×</button>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:12px;color:var(--text-sub);margin-bottom:10px">
+        Each line: <code>Label: Option1, Option2</code><br>
+        Example: <code>Size: Small, Regular, Large</code>
+      </div>
+      <textarea id="mod-editor-textarea" rows="6" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;resize:vertical;font-family:monospace" placeholder="Size: Small, Regular, Large&#10;Sugar: No Sugar, Half, Normal"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)">
+      <button class="bill-act-btn primary" onclick="saveModifiers()">Save</button>
+      <button class="bill-act-btn" onclick="clearModifiers()">Clear All</button>
+      <button class="bill-act-btn" onclick="document.getElementById('mod-editor-overlay').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SPLIT BILL MODAL -->
+<div class="overlay hidden" id="split-overlay">
+  <div class="modal split-modal">
+    <div class="modal-header">
+      <h2>✂️ Split Bill — Table <span id="split-table-no"></span></h2>
+      <button class="modal-close" onclick="document.getElementById('split-overlay').classList.add('hidden')">×</button>
+    </div>
+    <div id="split-body" style="padding:14px 16px;max-height:60vh;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)">
+      <button class="bill-act-btn primary" onclick="generateSplitBills()">Generate 2 Bills &amp; Print</button>
+      <button class="bill-act-btn" onclick="document.getElementById('split-overlay').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABLE TRANSFER MODAL -->
+<div class="overlay hidden" id="transfer-overlay">
+  <div class="modal" style="width:360px;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:15px;font-weight:600;color:var(--text)">🔄 Transfer <span id="transfer-from-label"></span> To…</h2>
+      <button class="modal-close" onclick="document.getElementById('transfer-overlay').classList.add('hidden')">×</button>
+    </div>
+    <div id="transfer-body"></div>
+  </div>
+</div>
+
+<!-- Firebase compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ─── FIREBASE INIT ───
+const firebaseConfig = {
+  apiKey: "AIzaSyCxY-AfWDTB7T2SL4c3GDaz56AWpf--sp0",
+  authDomain: "bill-b9548.firebaseapp.com",
+  projectId: "bill-b9548",
+  storageBucket: "bill-b9548.firebasestorage.app",
+  messagingSenderId: "52759095228",
+  appId: "1:52759095228:web:4d01cd1f741e16e66c6db9"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ─── STATE ───
+let settings = {};
+let menuData = [];
+let activeTableId = null;
+let activeCart = {};
+let allTableData = {};
+let tableUnsubscribers = [];
+let currentUser = null;
+let activeDiscount = { type: 'flat', value: 0 };
+let splitAssignment = {};
+let pendingItemForModifier = null;
+let pendingModifierEdit = null;
+
+const DEFAULTS = {
+  cafeName: 'Coffee Tree',
+  address: 'H-58, Old Khandala Rd, near Asha Seva Kendra\nSt. Stanislaus Villa, Khandala, Lonavala 410401',
+  phone: '090217 36244',
+  cgstRate: 2.5,
+  sgstRate: 2.5,
+  tableCount: 8
+};
+
+const SEED_MENU = [
+  { id: 'coffee', name: 'Coffee', order: 1, items: [
+    { id: 'cap', name: 'Cappuccino', price: 80 },
+    { id: 'cc', name: 'Cold Coffee', price: 100 },
+    { id: 'hc', name: 'Hot Chocolate', price: 90 },
+    { id: 'ac', name: 'American Coffee', price: 70 },
+    { id: 'mc', name: 'Mocha Coffee', price: 90 },
+    { id: 'ccc', name: 'Caramel Cold Coffee', price: 110 },
+    { id: 'esp', name: 'Espresso', price: 60 },
+  ]},
+  { id: 'bakes', name: 'Bakes', order: 2, items: [
+    { id: 'cbr', name: 'Coffee Brownie', price: 80 },
+    { id: 'bb', name: 'Banana Bread', price: 70 },
+    { id: 'chk', name: 'Cheese Cake', price: 120 },
+  ]},
+  { id: 'food', name: 'Food', order: 3, items: [
+    { id: 'vs', name: 'Veg Sandwich', price: 90 },
+    { id: 'cs', name: 'Chicken Sandwich', price: 130 },
+  ]},
+  { id: 'shakes', name: 'Shakes', order: 4, items: [
+    { id: 'blue', name: 'Blueberry Milkshake', price: 120 },
+    { id: 'straw', name: 'Strawberry Shake', price: 110 },
+    { id: 'ccv', name: 'Cold Coffee Vanilla', price: 130 },
+  ]},
+];
+
+// ─── BOOT ───
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { window.location.href = 'index.html'; return; }
+  currentUser = user;
+
+  // Stale-While-Revalidate caching: instantly render cached UI
+  const cachedSettings = localStorage.getItem('pos-settings');
+  const cachedMenu = localStorage.getItem('pos-menu');
+  let hasCache = false;
+  if (cachedSettings && cachedMenu) {
+    try {
+      settings = JSON.parse(cachedSettings);
+      menuData = JSON.parse(cachedMenu);
+      hasCache = true;
+      setupUI();
+      startTableListeners();
+      document.getElementById('page-loader').classList.add('hidden');
+      document.getElementById('app-shell').style.display = 'flex';
+    } catch (e) {
+      console.warn('Failed to parse cached POS config:', e);
+    }
+  }
+
+  // Fetch fresh config from Firestore in the background
+  try {
+    await Promise.all([loadSettings(), loadMenu()]);
+    localStorage.setItem('pos-settings', JSON.stringify(settings));
+    localStorage.setItem('pos-menu', JSON.stringify(menuData));
+  } catch (err) {
+    console.error('Failed to load fresh POS config:', err.message);
+  }
+
+  if (!hasCache) {
+    setupUI();
+    startTableListeners();
+    document.getElementById('page-loader').classList.add('hidden');
+    document.getElementById('app-shell').style.display = 'flex';
+  } else {
+    // Re-render UI with fresh data if already displayed
+    renderTableList();
+    if (activeTableId) {
+      renderMenu();
+      renderCart();
+    }
+  }
+});
+
+// ─── SETTINGS ───
+async function loadSettings() {
+  const snap = await db.collection('settings').doc('config').get();
+  settings = snap.exists ? { ...DEFAULTS, ...snap.data() } : { ...DEFAULTS };
+}
+
+async function saveSettingsData(data) {
+  await db.collection('settings').doc('config').set(data, { merge: true });
+  Object.assign(settings, data);
+  localStorage.setItem('pos-settings', JSON.stringify(settings));
+}
+
+// ─── MENU ───
+async function loadMenu() {
+  const snap = await db.collection('menu').get();
+  if (snap.empty) {
+    const batch = db.batch();
+    SEED_MENU.forEach(cat => {
+      batch.set(db.collection('menu').doc(cat.id), { name: cat.name, order: cat.order, items: cat.items });
+    });
+    await batch.commit();
+    menuData = SEED_MENU;
+  } else {
+    menuData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    menuData.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+}
+
+// ─── TABLE LISTENERS ───
+function startTableListeners() {
+  tableUnsubscribers.forEach(u => u());
+  tableUnsubscribers = [];
+  for (let i = 1; i <= settings.tableCount; i++) {
+    const id = String(i);
+    const unsub = db.collection('tables').doc(id).onSnapshot(snap => {
+      allTableData[id] = snap.exists ? snap.data() : { status: 'free', cart: {} };
+      if (activeTableId && String(activeTableId) === id) {
+        activeCart = allTableData[id].cart || {};
+        renderCart();
+        renderTopbar();
+      }
+      renderTableList();
+    });
+    tableUnsubscribers.push(unsub);
+  }
+}
+
+// ─── DEBOUNCE UTILITY ───
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// ─── UI SETUP ───
+function setupUI() {
+  document.getElementById('logout-btn').onclick = () => { auth.signOut().then(() => window.location.href = 'index.html'); };
+  document.getElementById('settings-btn').onclick = openSettings;
+  document.getElementById('settings-close').onclick = () => document.getElementById('settings-overlay').classList.add('hidden');
+  document.getElementById('bill-btn').onclick = generateBill;
+  document.getElementById('bill-close').onclick = closeBillModal;
+  document.getElementById('print-btn').onclick = printBill;
+  document.getElementById('wa-btn').onclick = whatsappBill;
+  document.getElementById('save-cafe-btn').onclick = saveCafeSettings;
+  document.getElementById('save-tax-btn').onclick = saveTaxSettings;
+  document.getElementById('add-cat-btn').onclick = addCategory;
+  document.getElementById('kot-btn').onclick = printKOT;
+  document.getElementById('split-btn').onclick = openSplitModal;
+  document.getElementById('transfer-btn').onclick = openTransferModal;
+  document.getElementById('menu-search').addEventListener('input', debounce(renderMenu, 120));
+
+  const themeToggle = document.getElementById('theme-toggle-btn');
+  if (themeToggle) {
+    themeToggle.onclick = () => {
+      const isDark = document.body.classList.contains('theme-dark-pos');
+      if (isDark) {
+        document.body.classList.remove('theme-dark-pos');
+        document.body.classList.add('theme-light-pos');
+        localStorage.setItem('pos-theme', 'light');
+      } else {
+        document.body.classList.remove('theme-light-pos');
+        document.body.classList.add('theme-dark-pos');
+        localStorage.setItem('pos-theme', 'dark');
+      }
+    };
+  }
+
+  document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    };
+  });
+
+  document.getElementById('bill-overlay').onclick = (e) => { if (e.target === e.currentTarget) closeBillModal(); };
+  document.getElementById('settings-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('settings-overlay').classList.add('hidden'); };
+  document.getElementById('split-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('split-overlay').classList.add('hidden'); };
+  document.getElementById('transfer-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('transfer-overlay').classList.add('hidden'); };
+  document.getElementById('modifier-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('modifier-overlay').classList.add('hidden'); };
+  document.getElementById('mod-editor-overlay').onclick = (e) => { if (e.target === e.currentTarget) document.getElementById('mod-editor-overlay').classList.add('hidden'); };
+}
+
+// ─── TABLE LIST ───
+function renderTableList() {
+  const list = document.getElementById('table-list');
+  let free = 0, occ = 0, html = '';
+  for (let i = 1; i <= settings.tableCount; i++) {
+    const td = allTableData[String(i)] || { cart: {} };
+    const isActive = activeTableId === i;
+    const isOcc = Object.keys(td.cart || {}).length > 0;
+    if (isOcc) occ++; else free++;
+    const cls = isActive ? 'active' : isOcc ? 'occupied' : 'free';
+    const dotCls = isActive ? 'dot-active' : isOcc ? 'dot-occupied' : 'dot-free';
+    html += `<button class="table-btn ${cls}" onclick="selectTable(${i})" title="Table ${i}">${i}</button>`;
+  }
+  list.innerHTML = html;
+  document.getElementById('free-count').textContent = free;
+  document.getElementById('occ-count').textContent = occ;
+}
+
+// ─── MOBILE VIEW TOGGLE ───
+function mobileShowMenu() {
+  document.querySelector('.content').classList.remove('mob-show-cart');
+  const mt = document.getElementById('mob-menu-tab');
+  const ct = document.getElementById('mob-cart-tab');
+  if (mt) mt.classList.add('active');
+  if (ct) ct.classList.remove('active');
+}
+
+function mobileShowCart() {
+  document.querySelector('.content').classList.add('mob-show-cart');
+  const mt = document.getElementById('mob-menu-tab');
+  const ct = document.getElementById('mob-cart-tab');
+  if (mt) mt.classList.remove('active');
+  if (ct) ct.classList.add('active');
+}
+
+function updateMobileCartBadge() {
+  const badge = document.getElementById('mob-cart-badge');
+  if (!badge) return;
+  const count = Object.values(activeCart).reduce((s, { qty }) => s + qty, 0);
+  badge.textContent = count > 0 ? count : '';
+  badge.style.display = count > 0 ? 'inline-flex' : 'none';
+}
+
+// ─── SELECT TABLE ───
+function selectTable(id) {
+  activeTableId = id;
+  activeDiscount = { type: 'flat', value: 0 };
+  const dvEl = document.getElementById('discount-value');
+  if (dvEl) dvEl.value = '';
+  const td = allTableData[String(id)] || { cart: {} };
+  activeCart = JSON.parse(JSON.stringify(td.cart || {}));
+  const srch = document.getElementById('menu-search');
+  if (srch) { srch.value = ''; srch.style.display = ''; }
+  renderTableList();
+  renderTopbar();
+  renderMenu();
+  renderCart();
+  mobileShowMenu();
+}
+
+function renderTopbar() {
+  if (!activeTableId) return;
+  const isOcc = Object.keys(activeCart).length > 0;
+  document.getElementById('topbar-title').textContent = `Table ${activeTableId}`;
+  document.getElementById('topbar-sub').textContent = isOcc ? 'Order in progress' : 'No items yet — select from menu';
+  document.getElementById('topbar-badge').innerHTML = isOcc
+    ? `<span class="badge badge-occ">Occupied</span>`
+    : `<span class="badge badge-free">Free</span>`;
+  document.getElementById('transfer-btn').style.display = isOcc ? 'flex' : 'none';
+}
+
+// ─── MENU ───
+function renderMenu() {
+  const panel = document.getElementById('menu-panel');
+  if (!activeTableId) return;
+  const searchEl = document.getElementById('menu-search');
+  const q = (searchEl ? searchEl.value : '').toLowerCase();
+
+  let html = ``;
+  let anyItem = false;
+  let index = 0;
+  menuData.forEach(cat => {
+    const filtered = cat.items.filter(i => i.name.toLowerCase().includes(q));
+    if (!filtered.length) return;
+    anyItem = true;
+    html += `<div class="cat-label" style="animation-delay: ${index * 0.02}s; opacity: 0; animation-fill-mode: forwards;">${cat.name}</div><div class="menu-grid">`;
+    index++;
+    filtered.forEach(item => {
+      const hasMods = item.modifiers && item.modifiers.length > 0;
+      html += `<div class="menu-item" style="animation-delay: ${index * 0.02}s; opacity: 0; animation-fill-mode: forwards;" onclick="handleMenuItemClick('${escQ(item.name)}',${item.price},'${cat.id}','${item.id}')">
+        <div class="menu-item-name">${item.name}${hasMods ? ' <span style="font-size:10px">🎛️</span>' : ''}</div>
+        <div class="menu-item-footer">
+          <span class="menu-price">₹${item.price}</span>
+          <button class="add-btn" onclick="event.stopPropagation();handleMenuItemClick('${escQ(item.name)}',${item.price},'${cat.id}','${item.id}')">+</button>
+        </div>
+      </div>`;
+      index++;
+    });
+    html += `</div>`;
+  });
+  if (!anyItem) html += `<div class="menu-empty">No items match your search</div>`;
+  panel.innerHTML = html;
+}
+
+function escQ(s) { return s.replace(/'/g, "\\'"); }
+
+// ─── CART ───
+function handleMenuItemClick(name, price, catId, itemId) {
+  const cat = menuData.find(c => c.id === catId);
+  const item = cat && cat.items.find(i => i.id === itemId);
+  const modifiers = (item && item.modifiers) ? item.modifiers : [];
+  addItem(name, price, modifiers);
+}
+
+async function addItem(name, price, modifiersArray) {
+  if (!activeTableId) return;
+  if (modifiersArray && modifiersArray.length > 0) {
+    pendingItemForModifier = { name, price, modifiers: modifiersArray };
+    document.getElementById('mod-item-name').textContent = name;
+    renderModifierModal();
+    document.getElementById('modifier-overlay').classList.remove('hidden');
+    return;
+  }
+  if (!activeCart[name]) activeCart[name] = { price, qty: 0 };
+  activeCart[name].qty++;
+  renderCart();
+  renderTopbar();
+  renderTableList();
+  await saveCart();
+}
+
+async function removeItem(name) {
+  if (!activeTableId || !activeCart[name]) return;
+  activeCart[name].qty--;
+  if (activeCart[name].qty <= 0) delete activeCart[name];
+  renderCart();
+  renderTopbar();
+  renderTableList();
+  await saveCart();
+}
+
+async function saveCart() {
+  const hasItems = Object.keys(activeCart).length > 0;
+  await db.collection('tables').doc(String(activeTableId)).set({
+    status: hasItems ? 'occupied' : 'free',
+    cart: activeCart,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+function renderCart() {
+  const body = document.getElementById('cart-body');
+  const footer = document.getElementById('cart-footer');
+  const items = Object.entries(activeCart);
+  if (!activeTableId || items.length === 0) {
+    body.innerHTML = '<div class="cart-empty">No items yet</div>';
+    footer.style.display = 'none';
+    updateMobileCartBadge();
+    return;
+  }
+  body.innerHTML = items.map(([name, { price, qty }]) => `
+    <div class="cart-item">
+      <div class="cart-item-name">${name}</div>
+      <div class="qty-ctrl">
+        <button class="qty-btn" onclick="removeItem('${escQ(name)}')">−</button>
+        <span class="qty-val">${qty}</span>
+        <button class="qty-btn" onclick="addItem('${escQ(name)}',${price},[])">+</button>
+      </div>
+      <div class="cart-item-price">₹${price * qty}</div>
+    </div>`).join('');
+
+  const { subtotal, discountAmt, cgst, sgst, grand } = calcTotals();
+  document.getElementById('cgst-label').textContent = `CGST (${settings.cgstRate}%)`;
+  document.getElementById('sgst-label').textContent = `SGST (${settings.sgstRate}%)`;
+  document.getElementById('sub-val').textContent = `₹${subtotal}`;
+  document.getElementById('cgst-val').textContent = `₹${cgst}`;
+  document.getElementById('sgst-val').textContent = `₹${sgst}`;
+  document.getElementById('grand-val').textContent = `₹${grand}`;
+
+  const discRow = document.getElementById('discount-display-row');
+  const discClear = document.getElementById('discount-clear');
+  if (discountAmt > 0) {
+    discRow.style.display = 'flex';
+    document.getElementById('discount-val').textContent = `−₹${discountAmt}`;
+    discClear.style.display = '';
+  } else {
+    discRow.style.display = 'none';
+    discClear.style.display = 'none';
+  }
+  footer.style.display = 'block';
+  updateMobileCartBadge();
+}
+
+function calcTotals() {
+  const items = Object.entries(activeCart);
+  const subtotal = items.reduce((s, [, { price, qty }]) => s + price * qty, 0);
+  let discountAmt = 0;
+  if (activeDiscount.value > 0) {
+    discountAmt = activeDiscount.type === 'percent'
+      ? +(subtotal * activeDiscount.value / 100).toFixed(2)
+      : +Math.min(activeDiscount.value, subtotal).toFixed(2);
+  }
+  const taxable = subtotal - discountAmt;
+  const cgst = +(taxable * settings.cgstRate / 100).toFixed(2);
+  const sgst = +(taxable * settings.sgstRate / 100).toFixed(2);
+  const grand = +(taxable + cgst + sgst).toFixed(2);
+  return { items, subtotal, discountAmt, cgst, sgst, grand };
+}
+
+// ─── DISCOUNT ───
+function applyDiscount() {
+  const type = document.getElementById('discount-type').value;
+  const value = parseFloat(document.getElementById('discount-value').value) || 0;
+  activeDiscount = { type, value };
+  renderCart();
+}
+
+function clearDiscount() {
+  activeDiscount = { type: 'flat', value: 0 };
+  document.getElementById('discount-value').value = '';
+  renderCart();
+}
+
+// ─── BILL ───
+function generateBill() {
+  if (!activeTableId || !Object.keys(activeCart).length) return;
+  const now = new Date();
+  const billNo = `CT${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const { subtotal, discountAmt, cgst, sgst, grand } = calcTotals();
+  const items = Object.entries(activeCart).map(([name, { price, qty }]) => ({ name, price, qty }));
+
+  window._bill = {
+    billNo, tableId: activeTableId, dateStr, timeStr, items,
+    subtotal, discountAmt, discountType: activeDiscount.type, discountValue: activeDiscount.value,
+    cgst, sgst, grand, cgstRate: settings.cgstRate, sgstRate: settings.sgstRate,
+  };
+
+  document.getElementById('bm-logo').textContent = settings.cafeName;
+  document.getElementById('bm-addr').innerHTML = settings.address.replace(/\n/g, '<br>') + `<br>Ph: ${settings.phone}`;
+  document.getElementById('bm-body').innerHTML = `
+    <div class="bill-meta"><span>Bill No: ${billNo}</span><span>${dateStr}, ${timeStr}</span></div>
+    <div class="bill-table-label">Table ${activeTableId}</div>
+    <table class="bill-items">
+      <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+      <tbody>${items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>₹${i.price * i.qty}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="bill-totals">
+      <div class="bt-row"><span>Subtotal</span><span>₹${subtotal}</span></div>
+      ${discountAmt > 0 ? `<div class="bt-row" style="color:var(--green)"><span>Discount${activeDiscount.type==='percent'?' ('+activeDiscount.value+'%)':''}</span><span>−₹${discountAmt}</span></div>` : ''}
+      <div class="bt-row"><span>CGST (${settings.cgstRate}%)</span><span>₹${cgst}</span></div>
+      <div class="bt-row"><span>SGST (${settings.sgstRate}%)</span><span>₹${sgst}</span></div>
+      <div class="bt-row grand"><span>Total</span><span>₹${grand}</span></div>
+    </div>
+    <div class="bill-thank">Thank you for visiting ${settings.cafeName} ☕<br>Come back soon!</div>`;
+  document.getElementById('bill-overlay').classList.remove('hidden');
+
+  db.collection('bills').add({
+    ...window._bill,
+    date: now.toISOString(),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(err => console.warn('Bill save failed:', err.message));
+}
+
+async function closeBillModal() {
+  document.getElementById('bill-overlay').classList.add('hidden');
+  activeDiscount = { type: 'flat', value: 0 };
+  const dvEl = document.getElementById('discount-value');
+  if (dvEl) dvEl.value = '';
+  if (activeTableId) {
+    await db.collection('tables').doc(String(activeTableId)).set({ status: 'free', cart: {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    activeCart = {};
+    const srch = document.getElementById('menu-search');
+    if (srch) srch.value = '';
+    renderCart();
+    renderTopbar();
+    renderTableList();
+    renderMenu();
+    mobileShowMenu();
+  }
+}
+
+function printBill() {
+  const d = window._bill;
+  if (!d) return;
+  const area = document.getElementById('print-area');
+  area.innerHTML = buildPrintHTML(d);
+  area.style.display = 'block';
+  window.print();
+  area.style.display = 'none';
+}
+
+function whatsappBill() {
+  const d = window._bill;
+  if (!d) return;
+  let msg = `*${settings.cafeName} — Bill Receipt*\n`;
+  msg += `${settings.address.replace(/\n/g,', ')}\nPh: ${settings.phone}\n\n`;
+  msg += `Bill No: ${d.billNo}\nDate: ${d.dateStr}, ${d.timeStr}\nTable: ${d.tableId}\n\n*Items:*\n`;
+  d.items.forEach(i => { msg += `${i.name} x${i.qty} — ₹${i.price * i.qty}\n`; });
+  msg += `\nSubtotal: ₹${d.subtotal}`;
+  if (d.discountAmt > 0) msg += `\nDiscount: −₹${d.discountAmt}`;
+  msg += `\nCGST (${d.cgstRate}%): ₹${d.cgst}\nSGST (${d.sgstRate}%): ₹${d.sgst}\n*Total: ₹${d.grand}*\n\nThank you! ☕`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function buildPrintHTML(d) {
+  return `
+    ${d.splitLabel ? `<div style="text-align:center;font-size:13px;font-weight:600;color:#555;margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed #ccc">${d.splitLabel}</div>` : ''}
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="font-size:20px;font-weight:700">${settings.cafeName}</div>
+      <div style="font-size:11px;color:#666;margin-top:4px;white-space:pre-line">${settings.address}</div>
+      <div style="font-size:11px;color:#666">Ph: ${settings.phone}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:6px">
+      <span>Bill: ${d.billNo}</span><span>${d.dateStr}, ${d.timeStr}</span>
+    </div>
+    <div style="font-size:11px;color:#666;margin-bottom:8px">Table ${d.tableId}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">
+      <thead><tr style="border-bottom:1px solid #ccc"><th style="text-align:left;padding:3px 0">Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${(d.items||[]).map(i => `<tr><td style="padding:3px 0">${i.name}</td><td style="text-align:center">${i.qty}</td><td style="text-align:right">₹${i.price*i.qty}</td></tr>`).join('')}</tbody>
+    </table>
+    <div style="border-top:1px solid #ccc;padding-top:6px">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal</span><span>₹${d.subtotal}</span></div>
+      ${(d.discountAmt > 0) ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:#2ECC8A"><span>Discount</span><span>−₹${d.discountAmt}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>CGST (${d.cgstRate||2.5}%)</span><span>₹${d.cgst}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>SGST (${d.sgstRate||2.5}%)</span><span>₹${d.sgst}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;margin-top:4px"><span>Total</span><span>₹${d.grand}</span></div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:#666;margin-top:14px">Thank you for visiting ${settings.cafeName}! ☕</div>`;
+}
+
+// ─── KOT ───
+function printKOT() {
+  if (!activeTableId || !Object.keys(activeCart).length) return;
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const items = Object.entries(activeCart).map(([name, { qty }]) => ({ name, qty }));
+  const area = document.getElementById('print-area');
+  area.innerHTML = buildKOTHTML(activeTableId, items, timeStr);
+  area.style.display = 'block';
+  window.print();
+  area.style.display = 'none';
+}
+
+function buildKOTHTML(tableId, items, timeStr) {
+  return `
+    <div style="font-size:18px;font-weight:700;text-align:center;margin-bottom:8px">KOT — Kitchen Order</div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:12px;border-bottom:1px dashed #ccc;padding-bottom:8px">
+      <span><strong>Table ${tableId}</strong></span><span>${timeStr}</span>
+    </div>
+    <table style="width:100%;font-size:15px;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid #ccc">
+        <th style="text-align:left;padding:4px 0">Item</th>
+        <th style="text-align:right;padding:4px 0">Qty</th>
+      </tr></thead>
+      <tbody>${items.map(i =>
+        `<tr><td style="padding:8px 0;font-weight:600">${i.name}</td><td style="text-align:right;font-size:20px;font-weight:700">× ${i.qty}</td></tr>`
+      ).join('')}</tbody>
+    </table>`;
+}
+
+// ─── MODIFIERS ───
+function renderModifierModal() {
+  const { modifiers } = pendingItemForModifier;
+  let html = '';
+  modifiers.forEach((mod, i) => {
+    html += `<div class="mod-group">
+      <div class="mod-group-label">${mod.label}</div>
+      <div class="mod-options">
+        ${mod.options.map((opt, j) =>
+          `<label class="mod-option">
+            <input type="radio" name="mod-${i}" value="${opt}" ${j===0?'checked':''} />
+            <span>${opt}</span>
+          </label>`
+        ).join('')}
+      </div>
+    </div>`;
+  });
+  document.getElementById('mod-body').innerHTML = html;
+}
+
+function confirmModifier() {
+  if (!pendingItemForModifier) return;
+  const { name, price, modifiers } = pendingItemForModifier;
+  const selected = modifiers.map((mod, i) => {
+    const checked = document.querySelector(`input[name="mod-${i}"]:checked`);
+    return checked ? checked.value : mod.options[0];
+  });
+  const cartKey = `${name} [${selected.join(', ')}]`;
+  if (!activeCart[cartKey]) activeCart[cartKey] = { price, qty: 0 };
+  activeCart[cartKey].qty++;
+  document.getElementById('modifier-overlay').classList.add('hidden');
+  pendingItemForModifier = null;
+  renderCart();
+  renderTopbar();
+  renderTableList();
+  saveCart();
+}
+
+function openModifierEditor(catId, itemId) {
+  const cat = menuData.find(c => c.id === catId);
+  const item = cat && cat.items.find(i => i.id === itemId);
+  if (!item) return;
+  pendingModifierEdit = { catId, itemId };
+  document.getElementById('mod-editor-item-name').textContent = item.name;
+  const mods = item.modifiers || [];
+  document.getElementById('mod-editor-textarea').value = mods.map(m => `${m.label}: ${m.options.join(', ')}`).join('\n');
+  document.getElementById('mod-editor-overlay').classList.remove('hidden');
+}
+
+async function saveModifiers() {
+  if (!pendingModifierEdit) return;
+  const { catId, itemId } = pendingModifierEdit;
+  const raw = document.getElementById('mod-editor-textarea').value.trim();
+  const modifiers = raw ? raw.split('\n').filter(l => l.includes(':')).map(line => {
+    const colonIdx = line.indexOf(':');
+    return {
+      label: line.slice(0, colonIdx).trim(),
+      options: line.slice(colonIdx + 1).split(',').map(o => o.trim()).filter(Boolean)
+    };
+  }).filter(m => m.options.length > 0) : [];
+
+  const cat = menuData.find(c => c.id === catId);
+  const item = cat && cat.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.modifiers = modifiers;
+  await db.collection('menu').doc(catId).set({ items: cat.items }, { merge: true });
+  document.getElementById('mod-editor-overlay').classList.add('hidden');
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+async function clearModifiers() {
+  if (!pendingModifierEdit) return;
+  const { catId, itemId } = pendingModifierEdit;
+  const cat = menuData.find(c => c.id === catId);
+  const item = cat && cat.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.modifiers = [];
+  await db.collection('menu').doc(catId).set({ items: cat.items }, { merge: true });
+  document.getElementById('mod-editor-textarea').value = '';
+  document.getElementById('mod-editor-overlay').classList.add('hidden');
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+// ─── SPLIT BILL ───
+function openSplitModal() {
+  if (!activeTableId || !Object.keys(activeCart).length) return;
+  splitAssignment = {};
+  Object.keys(activeCart).forEach(name => { splitAssignment[name] = 'A'; });
+  document.getElementById('split-table-no').textContent = activeTableId;
+  renderSplitModal();
+  document.getElementById('split-overlay').classList.remove('hidden');
+}
+
+function renderSplitModal() {
+  const items = Object.entries(activeCart);
+  const { totalA, totalB } = calcSplitTotals();
+  let html = '';
+  items.forEach(([name, { price, qty }]) => {
+    const assigned = splitAssignment[name] || 'A';
+    html += `<div class="split-item">
+      <span class="split-item-name">${name} ×${qty} (₹${price * qty})</span>
+      <div class="split-toggle">
+        <button class="split-tog-btn ${assigned==='A'?'active':''}" onclick="setSplitItem('${escQ(name)}','A')">A</button>
+        <button class="split-tog-btn ${assigned==='B'?'active':''}" onclick="setSplitItem('${escQ(name)}','B')">B</button>
+      </div>
+    </div>`;
+  });
+  html += `<div class="split-totals">
+    <span>Customer A: <strong>₹${totalA}</strong></span>
+    <span>Customer B: <strong>₹${totalB}</strong></span>
+  </div>`;
+  document.getElementById('split-body').innerHTML = html;
+}
+
+function setSplitItem(name, customer) {
+  splitAssignment[name] = customer;
+  renderSplitModal();
+}
+
+function calcSplitTotals() {
+  let subA = 0, subB = 0;
+  Object.entries(activeCart).forEach(([name, { price, qty }]) => {
+    if (splitAssignment[name] === 'B') subB += price * qty;
+    else subA += price * qty;
+  });
+  const rate = 1 + settings.cgstRate / 100 + settings.sgstRate / 100;
+  return {
+    subA, subB,
+    totalA: +(subA * rate).toFixed(2),
+    totalB: +(subB * rate).toFixed(2)
+  };
+}
+
+async function generateSplitBills() {
+  const now = new Date();
+  const billNoBase = `CT${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  for (const part of ['A', 'B']) {
+    const partItems = Object.entries(activeCart)
+      .filter(([name]) => (splitAssignment[name] || 'A') === part)
+      .map(([name, { price, qty }]) => ({ name, price, qty }));
+    if (!partItems.length) continue;
+
+    const subtotal = partItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const cgst = +(subtotal * settings.cgstRate / 100).toFixed(2);
+    const sgst = +(subtotal * settings.sgstRate / 100).toFixed(2);
+    const grand = +(subtotal + cgst + sgst).toFixed(2);
+    const billData = {
+      billNo: billNoBase + part, tableId: activeTableId, dateStr, timeStr,
+      items: partItems, subtotal, discountAmt: 0, discountType: 'flat', discountValue: 0,
+      cgst, sgst, grand, cgstRate: settings.cgstRate, sgstRate: settings.sgstRate,
+      splitPart: part, date: now.toISOString(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try { await db.collection('bills').add(billData); } catch(e) { console.warn(e); }
+
+    const area = document.getElementById('print-area');
+    area.innerHTML = buildPrintHTML({ ...billData, splitLabel: `Split Bill — Customer ${part}` });
+    area.style.display = 'block';
+    window.print();
+    area.style.display = 'none';
+  }
+
+  document.getElementById('split-overlay').classList.add('hidden');
+  // Clear the table directly — closeBillModal() is for the bill modal flow only
+  if (activeTableId) {
+    await db.collection('tables').doc(String(activeTableId)).set({ status: 'free', cart: {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    activeCart = {};
+    activeDiscount = { type: 'flat', value: 0 };
+    const dvEl = document.getElementById('discount-value');
+    if (dvEl) dvEl.value = '';
+    const srch = document.getElementById('menu-search');
+    if (srch) srch.value = '';
+    renderCart();
+    renderTopbar();
+    renderTableList();
+    renderMenu();
+    mobileShowMenu();
+  }
+}
+
+// ─── TABLE TRANSFER ───
+function openTransferModal() {
+  if (!activeTableId || !Object.keys(activeCart).length) return;
+  let html = '<div class="transfer-grid">';
+  for (let i = 1; i <= settings.tableCount; i++) {
+    if (i === activeTableId) continue;
+    const td = allTableData[String(i)] || { cart: {} };
+    const hasItems = Object.keys(td.cart || {}).length > 0;
+    html += `<button class="transfer-table-btn${hasItems ? ' occupied' : ''}" onclick="confirmTransfer(${i})" title="${hasItems ? 'Occupied — will merge carts' : ''}">
+      Table ${i}${hasItems ? '<br><small>(merge)</small>' : ''}
+    </button>`;
+  }
+  html += '</div>';
+  document.getElementById('transfer-from-label').textContent = `Table ${activeTableId}`;
+  document.getElementById('transfer-body').innerHTML = html;
+  document.getElementById('transfer-overlay').classList.remove('hidden');
+}
+
+async function confirmTransfer(targetId) {
+  const targetData = allTableData[String(targetId)] || { cart: {} };
+  const targetCart = targetData.cart || {};
+  if (Object.keys(targetCart).length > 0) {
+    if (!confirm(`Table ${targetId} already has items. Merge carts?`)) return;
+  }
+  const mergedCart = { ...targetCart };
+  Object.entries(activeCart).forEach(([name, { price, qty }]) => {
+    if (mergedCart[name]) {
+      mergedCart[name] = { price, qty: mergedCart[name].qty + qty };
+    } else {
+      mergedCart[name] = { price, qty };
+    }
+  });
+
+  const batch = db.batch();
+  batch.set(db.collection('tables').doc(String(targetId)), { status: 'occupied', cart: mergedCart, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  batch.set(db.collection('tables').doc(String(activeTableId)), { status: 'free', cart: {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  await batch.commit();
+
+  document.getElementById('transfer-overlay').classList.add('hidden');
+  activeCart = {};
+  activeTableId = null;
+  document.getElementById('topbar-title').textContent = 'Select a table to begin';
+  document.getElementById('topbar-sub').textContent = 'Choose from the sidebar';
+  document.getElementById('topbar-badge').innerHTML = '';
+  document.getElementById('transfer-btn').style.display = 'none';
+  const srch = document.getElementById('menu-search');
+  if (srch) { srch.style.display = 'none'; srch.value = ''; }
+  document.getElementById('menu-panel').innerHTML = '<div class="menu-empty">Select a table first to start taking orders</div>';
+  renderCart();
+  renderTableList();
+}
+
+// ─── SETTINGS MODAL ───
+async function openSettings() {
+  document.getElementById('s-name').value = settings.cafeName;
+  document.getElementById('s-address').value = settings.address;
+  document.getElementById('s-phone').value = settings.phone;
+  document.getElementById('s-tables').value = settings.tableCount;
+  document.getElementById('s-cgst').value = settings.cgstRate;
+  document.getElementById('s-sgst').value = settings.sgstRate;
+  renderMenuEditor();
+  document.getElementById('settings-overlay').classList.remove('hidden');
+}
+
+async function saveCafeSettings() {
+  const data = {
+    cafeName: document.getElementById('s-name').value.trim(),
+    address: document.getElementById('s-address').value.trim(),
+    phone: document.getElementById('s-phone').value.trim(),
+    tableCount: Number(document.getElementById('s-tables').value) || 8,
+  };
+  await saveSettingsData(data);
+  document.getElementById('sidebar-logo').textContent = '☕ ' + data.cafeName;
+  startTableListeners();
+  showSuccess('cafe-success');
+}
+
+async function saveTaxSettings() {
+  const data = {
+    cgstRate: parseFloat(document.getElementById('s-cgst').value) || 0,
+    sgstRate: parseFloat(document.getElementById('s-sgst').value) || 0,
+  };
+  await saveSettingsData(data);
+  renderCart();
+  showSuccess('tax-success');
+}
+
+function showSuccess(id) {
+  const el = document.getElementById(id);
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─── MENU EDITOR ───
+function renderMenuEditor() {
+  const list = document.getElementById('menu-editor-list');
+  list.innerHTML = menuData.map(cat => `
+    <div class="menu-editor-cat">
+      <div class="menu-editor-cat-header">
+        <span class="menu-editor-cat-name">${cat.name}</span>
+        <div class="menu-editor-cat-actions">
+          <button class="icon-btn-sm danger" onclick="deleteCat('${cat.id}')" title="Delete Category">🗑</button>
+        </div>
+      </div>
+      <div class="menu-editor-items" id="mei-${cat.id}">
+        ${cat.items.map(item => `
+          <div class="menu-editor-item" id="mitem-${item.id}">
+            <span class="mei-name">${item.name}</span>
+            <span class="mei-price">₹${item.price}</span>
+            <input class="mei-edit-input" value="${item.name}" style="display:none" />
+            <input class="mei-price-input" type="number" value="${item.price}" style="display:none" />
+            <button class="icon-btn-sm" onclick="openModifierEditor('${cat.id}','${item.id}')" title="Modifiers">🎛️</button>
+            <button class="icon-btn-sm" onclick="editItem('${item.id}')" title="Edit">✏️</button>
+            <button class="icon-btn-sm" onclick="saveItem('${cat.id}','${item.id}')" style="display:none" title="Save">✅</button>
+            <button class="icon-btn-sm danger" onclick="deleteItem('${cat.id}','${item.id}')" title="Delete">🗑</button>
+          </div>`).join('')}
+        <div class="add-item-row">
+          <input type="text" class="add-item-name" id="ain-${cat.id}" placeholder="Item name…" />
+          <input type="number" class="add-item-price" id="aip-${cat.id}" placeholder="₹" />
+          <button class="btn-sm primary" onclick="addMenuItem('${cat.id}')">+ Add</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function editItem(itemId) {
+  const row = document.getElementById('mitem-' + itemId);
+  row.querySelector('.mei-name').style.display = 'none';
+  row.querySelector('.mei-price').style.display = 'none';
+  row.querySelector('.mei-edit-input').style.display = '';
+  row.querySelector('.mei-price-input').style.display = '';
+  row.querySelector('[onclick^="editItem"]').style.display = 'none';
+  row.querySelector('[onclick^="saveItem"]').style.display = '';
+}
+
+async function saveItem(catId, itemId) {
+  const row = document.getElementById('mitem-' + itemId);
+  const newName = row.querySelector('.mei-edit-input').value.trim();
+  const newPrice = Number(row.querySelector('.mei-price-input').value);
+  if (!newName || !newPrice) return;
+  const cat = menuData.find(c => c.id === catId);
+  const item = cat.items.find(i => i.id === itemId);
+  item.name = newName;
+  item.price = newPrice;
+  await db.collection('menu').doc(catId).set({ items: cat.items }, { merge: true });
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+async function deleteItem(catId, itemId) {
+  const cat = menuData.find(c => c.id === catId);
+  cat.items = cat.items.filter(i => i.id !== itemId);
+  await db.collection('menu').doc(catId).set({ items: cat.items }, { merge: true });
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+async function deleteCat(catId) {
+  const cat = menuData.find(c => c.id === catId);
+  if (!confirm(`Delete category "${cat.name}" and all items?`)) return;
+  await db.collection('menu').doc(catId).delete();
+  menuData = menuData.filter(c => c.id !== catId);
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+async function addMenuItem(catId) {
+  const nameEl = document.getElementById('ain-' + catId);
+  const priceEl = document.getElementById('aip-' + catId);
+  const name = nameEl.value.trim();
+  const price = Number(priceEl.value);
+  if (!name || !price) return;
+  const cat = menuData.find(c => c.id === catId);
+  const id = Math.random().toString(36).slice(2, 8);
+  cat.items.push({ id, name, price });
+  await db.collection('menu').doc(catId).set({ items: cat.items }, { merge: true });
+  nameEl.value = '';
+  priceEl.value = '';
+  renderMenuEditor();
+  if (activeTableId) renderMenu();
+}
+
+async function addCategory() {
+  const input = document.getElementById('new-cat-name');
+  const name = input.value.trim();
+  if (!name) return;
+  const id = Math.random().toString(36).slice(2, 8);
+  const newCat = { id, name, order: menuData.length + 1, items: [] };
+  await db.collection('menu').doc(id).set({ name, order: newCat.order, items: [] });
+  menuData.push(newCat);
+  input.value = '';
+  renderMenuEditor();
+}
+
+// ─── HELPERS ───
+function pad(n) { return String(n).padStart(2, '0'); }
+</script>
+</body>
+</html>
