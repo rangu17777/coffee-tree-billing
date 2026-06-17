@@ -33,7 +33,9 @@
     <div style="display:flex;align-items:center;gap:12px">
       <button class="icon-btn" onclick="window.location.href='dashboard.html'" title="Back to Dashboard">←</button>
       <div>
-        <div style="font-size:14px;font-weight:600;color:var(--text)">☕ Bill History</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">
+          <img src="assets/logo.svg" alt="" class="history-logo-img" />Bill History
+        </div>
         <div style="font-size:11px;color:var(--text-sub)" id="history-count">Loading…</div>
       </div>
     </div>
@@ -197,18 +199,21 @@ function renderBills() {
   let html = `<table class="history-table">
     <thead><tr>
       <th>Bill No</th><th>Table</th><th>Date &amp; Time</th><th>Items</th>
+      <th>Customer</th>
       <th style="text-align:right">Total</th><th style="text-align:center">Action</th>
     </tr></thead><tbody>`;
 
   allBills.forEach((bill, idx) => {
     const qty = (bill.items || []).reduce((s, i) => s + i.qty, 0);
     const isVoided = !!bill.voided;
+    const custPhone = bill.customerPhone || '';
     html += `
       <tr class="expandable${isVoided ? ' voided-row' : ''}" onclick="toggleDetail(${idx}, event)">
         <td style="font-family:monospace;font-size:12px">${bill.billNo || '—'}${isVoided ? ' <span class="void-badge">VOID</span>' : ''}</td>
         <td>Table ${bill.tableId}</td>
         <td>${bill.dateStr || '—'}, ${bill.timeStr || ''}</td>
         <td>${qty} item${qty !== 1 ? 's' : ''}</td>
+        <td style="font-family:monospace;font-size:12px;color:var(--text-sub)">${custPhone ? `📱 ${custPhone}` : '—'}</td>
         <td style="text-align:right;font-weight:600;color:var(--brown-accent)">₹${bill.grand}</td>
         <td style="text-align:center;white-space:nowrap">
           <button class="btn-sm secondary" onclick="printOneBill(${idx})" style="font-size:11px;padding:4px 8px" ${isVoided ? 'disabled' : ''}>🖨️</button>
@@ -216,8 +221,9 @@ function renderBills() {
         </td>
       </tr>
       <tr id="detail-${idx}" style="display:none">
-        <td colspan="6" style="background:var(--bg);padding:10px 14px 14px">
+        <td colspan="7" style="background:var(--bg);padding:10px 14px 14px">
           <div style="font-size:12px;color:var(--text-sub)">
+            ${custPhone ? `<div style="margin-bottom:6px">📱 Customer: <strong style="color:var(--text);font-family:monospace">${custPhone}</strong></div>` : ''}
             <table style="width:100%;margin-bottom:6px">
               ${(bill.items || []).map(i =>
                 `<tr><td>${i.name}</td><td style="text-align:center">${i.qty}</td><td style="text-align:right">₹${i.price*i.qty}</td></tr>`
@@ -527,10 +533,11 @@ function clearFilter() {
 
 function exportCSV() {
   if (!allBills.length) return;
-  const rows = [['Bill No','Table','Date','Time','Subtotal','Discount','CGST','SGST','Total','Status']];
+  const rows = [['Bill No','Table','Date','Time','Subtotal','Discount','CGST','SGST','Total','Customer Phone','Status']];
   allBills.forEach(b => rows.push([
     b.billNo, `Table ${b.tableId}`, b.dateStr, b.timeStr,
     b.subtotal, b.discountAmt||0, b.cgst, b.sgst, b.grand,
+    b.customerPhone || '',
     b.voided ? 'VOID' : 'Active'
   ]));
   const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });

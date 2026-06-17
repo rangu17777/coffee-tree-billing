@@ -32,7 +32,7 @@
 <div class="app-shell" id="app-shell" style="display:none">
   <!-- SIDEBAR -->
   <div class="sidebar">
-    <div class="sidebar-logo-mark">CT</div>
+    <img src="assets/logo.svg" alt="Coffee Tree" class="sidebar-logo-img" />
     <div class="sidebar-divider"></div>
     <div class="sidebar-tables" id="table-list"></div>
     <div class="sidebar-spacer"></div>
@@ -130,10 +130,16 @@
   <div class="modal bill-modal">
     <div class="bill-modal-header">
       <button class="close-btn" id="bill-close">×</button>
+      <img src="assets/logo.svg" alt="Coffee Tree" class="bill-modal-logo-img" />
       <div class="bill-modal-logo" id="bm-logo">Coffee Tree</div>
       <div class="bill-modal-addr" id="bm-addr"></div>
     </div>
     <div class="bill-body" id="bm-body"></div>
+    <div class="customer-phone-row">
+      <span class="customer-phone-label">📱 Customer WhatsApp</span>
+      <input type="tel" id="customer-phone" class="customer-phone-input"
+             placeholder="e.g. 9876543210" maxlength="13" />
+    </div>
     <div class="bill-actions">
       <button class="bill-act-btn" id="print-btn">🖨️ Print</button>
       <button class="bill-act-btn primary" id="wa-btn">💬 WhatsApp</button>
@@ -751,15 +757,29 @@ function generateBill() {
     </div>
     <div class="bill-thank">Thank you for visiting ${settings.cafeName} ☕<br>Come back soon!</div>`;
   document.getElementById('bill-overlay').classList.remove('hidden');
+  const phoneEl = document.getElementById('customer-phone');
+  if (phoneEl) phoneEl.value = '';
 
+  window._billDocRef = null;
   db.collection('bills').add({
     ...window._bill,
     date: now.toISOString(),
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).catch(err => console.warn('Bill save failed:', err.message));
+  }).then(ref => { window._billDocRef = ref; })
+    .catch(err => console.warn('Bill save failed:', err.message));
 }
 
 async function closeBillModal() {
+  // Persist customer phone if filled but WhatsApp wasn't clicked
+  const phoneEl = document.getElementById('customer-phone');
+  const rawPhone = phoneEl ? phoneEl.value.trim().replace(/\D/g, '') : '';
+  const finalPhone = rawPhone.length === 10 ? '91' + rawPhone : rawPhone;
+  if (finalPhone && window._billDocRef) {
+    window._billDocRef.update({ customerPhone: finalPhone })
+      .catch(e => console.warn('Phone save on close failed:', e.message));
+  }
+  window._billDocRef = null;
+
   document.getElementById('bill-overlay').classList.add('hidden');
   activeDiscount = { type: 'flat', value: 0 };
   const dvEl = document.getElementById('discount-value');
@@ -790,14 +810,42 @@ function printBill() {
 function whatsappBill() {
   const d = window._bill;
   if (!d) return;
+
+  const phoneEl = document.getElementById('customer-phone');
+  let phone = phoneEl ? phoneEl.value.trim().replace(/\D/g, '') : '';
+  if (phone.length === 10) phone = '91' + phone;
+
+  // Phone is mandatory for WhatsApp
+  if (!phone) {
+    if (phoneEl) {
+      phoneEl.classList.add('phone-error');
+      const prev = phoneEl.placeholder;
+      phoneEl.placeholder = '⚠ Enter customer number first';
+      phoneEl.focus();
+      setTimeout(() => {
+        phoneEl.classList.remove('phone-error');
+        phoneEl.placeholder = prev;
+      }, 2500);
+    }
+    return;
+  }
+
+  // Build bill message
   let msg = `*${settings.cafeName} — Bill Receipt*\n`;
-  msg += `${settings.address.replace(/\n/g,', ')}\nPh: ${settings.phone}\n\n`;
+  msg += `${settings.address.replace(/\n/g, ', ')}\nPh: ${settings.phone}\n\n`;
   msg += `Bill No: ${d.billNo}\nDate: ${d.dateStr}, ${d.timeStr}\nTable: ${d.tableId}\n\n*Items:*\n`;
   d.items.forEach(i => { msg += `${i.name} x${i.qty} — ₹${i.price * i.qty}\n`; });
   msg += `\nSubtotal: ₹${d.subtotal}`;
   if (d.discountAmt > 0) msg += `\nDiscount: −₹${d.discountAmt}`;
   msg += `\nCGST (${d.cgstRate}%): ₹${d.cgst}\nSGST (${d.sgstRate}%): ₹${d.sgst}\n*Total: ₹${d.grand}*\n\nThank you! ☕`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+
+  // Save customer phone to Firestore bill doc
+  if (window._billDocRef) {
+    window._billDocRef.update({ customerPhone: phone })
+      .catch(e => console.warn('Phone save failed:', e.message));
+  }
+
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 function buildPrintHTML(d) {
